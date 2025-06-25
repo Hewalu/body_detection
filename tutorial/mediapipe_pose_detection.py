@@ -32,6 +32,9 @@ def main():
             if not ret:
                 break
 
+            # Flip frame horizontally for mirror effect
+            frame = cv2.flip(frame, 1)
+
             # Get original frame dimensions
             original_height, original_width = frame.shape[:2]
 
