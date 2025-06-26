@@ -1,8 +1,9 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from send import send_data
+from send import DataSender
 from pose_detection import get_screen_dimensions, calculate_angle
+import threading
 
 # Initialize MediaPipe
 mp_drawing = mp.solutions.drawing_utils
@@ -31,6 +32,21 @@ def main():
     prev_right_movement_value = 0  # Track previous movement value for jump detection
     prev_left_movement_value = 0
     max_jump = 80  # Maximum allowed jump between frames
+
+    # Initialize DataSender
+    sender = DataSender()
+
+    # --- Threading for sending data ---
+    stop_sending = threading.Event()
+
+    def send_data_periodically(sender_instance, stop_event):
+        while not stop_event.is_set():
+            sender_instance.send()
+            # Wait for 500ms before the next send
+            stop_event.wait(0.5)
+
+    sender_thread = threading.Thread(target=send_data_periodically, args=(sender, stop_sending))
+    sender_thread.start()
 
     # Setup mediapipe instance
     with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
@@ -224,6 +240,10 @@ def main():
                     bar_y_right = screen_height - 50 - bar_height_right
                     cv2.rectangle(canvas, (bar_x_right, bar_y_right), (bar_x_right + bar_width, screen_height - 50), (0, 0, 255), -1)
 
+                # send data
+                sender.add_data("left_movement_value", left_movement_value)
+                sender.add_data("right_movement_value", right_movement_value)
+
             elif current_mode == ANGLE_MODE:
                 right_arm_angle = 0
                 left_arm_angle = 0
@@ -270,6 +290,10 @@ def main():
                 cv2.putText(canvas, f'Right Arm Angle: {int(right_arm_angle)}',
                             (screen_width - 550, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
 
+                # send data
+                sender.add_data("left_arm_angle", left_arm_angle)
+                sender.add_data("right_arm_angle", right_arm_angle)
+
             # Display current mode
             mode_text = "Mode: Movement" if current_mode == MOVEMENT_MODE else "Mode: Angles"
             cv2.putText(canvas, f"{mode_text} (Press 'm' to switch)", (20, screen_height - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
@@ -278,6 +302,10 @@ def main():
             cv2.namedWindow('MediaPipe Pose Detection', cv2.WND_PROP_FULLSCREEN)
             cv2.setWindowProperty('MediaPipe Pose Detection', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             cv2.imshow('MediaPipe Pose Detection', canvas)
+
+    # stop the sender thread
+    stop_sending.set()
+    sender_thread.join()
 
     cap.release()
     cv2.destroyAllWindows()
