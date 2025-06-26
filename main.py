@@ -1,35 +1,12 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-import tkinter as tk
+from send import send_data
+from pose_detection import get_screen_dimensions, calculate_angle
 
 # Initialize MediaPipe
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
-
-
-def get_screen_dimensions():
-    """Get screen width and height using tkinter"""
-    root = tk.Tk()
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    root.destroy()
-    return screen_width, screen_height
-
-
-def calculate_angle(a, b, c):
-    """Calculates the angle between three points (in degrees)."""
-    a = np.array(a)  # First point
-    b = np.array(b)  # Mid point (vertex)
-    c = np.array(c)  # End point
-
-    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
-    angle = np.abs(radians * 180.0 / np.pi)
-
-    if angle > 180.0:
-        angle = 360 - angle
-
-    return angle
 
 
 def main():
@@ -255,19 +232,35 @@ def main():
 
                     # Left Arm Angle (appears as right arm in mirror)
                     try:
-                        shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-                        elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-                        wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
-                        right_arm_angle = calculate_angle(shoulder, elbow, wrist)
+                        shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+                        elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value]
+                        wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
+
+                        right_arm_angle = calculate_angle([shoulder.x, shoulder.y], [elbow.x, elbow.y], [wrist.x, wrist.y])
+
+                        # Visualize angle on canvas
+                        elbow_pos = (int(elbow.x * new_width + x_offset), int(elbow.y * new_height + y_offset))
+                        cv2.circle(canvas, elbow_pos, 25, (255, 255, 0), 2)
+                        cv2.putText(canvas, str(int(right_arm_angle)),
+                                    (elbow_pos[0] - 20, elbow_pos[1] + 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2, cv2.LINE_AA)
                     except:
                         pass
 
                     # Right Arm Angle (appears as left arm in mirror)
                     try:
-                        shoulder = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
-                        elbow = [landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
-                        wrist = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
-                        left_arm_angle = calculate_angle(shoulder, elbow, wrist)
+                        shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+                        elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
+                        wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+
+                        left_arm_angle = calculate_angle([shoulder.x, shoulder.y], [elbow.x, elbow.y], [wrist.x, wrist.y])
+
+                        # Visualize angle on canvas
+                        elbow_pos = (int(elbow.x * new_width + x_offset), int(elbow.y * new_height + y_offset))
+                        cv2.circle(canvas, elbow_pos, 25, (255, 255, 0), 2)
+                        cv2.putText(canvas, str(int(left_arm_angle)),
+                                    (elbow_pos[0] - 20, elbow_pos[1] + 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2, cv2.LINE_AA)
                     except:
                         pass
 
