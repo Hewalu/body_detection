@@ -17,12 +17,33 @@ def get_screen_dimensions():
     return screen_width, screen_height
 
 
+def calculate_angle(a, b, c):
+    """Calculates the angle between three points (in degrees)."""
+    a = np.array(a)  # First point
+    b = np.array(b)  # Mid point (vertex)
+    c = np.array(c)  # End point
+
+    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    angle = np.abs(radians * 180.0 / np.pi)
+
+    if angle > 180.0:
+        angle = 360 - angle
+
+    return angle
+
+
 def main():
     # Initialize video capture
     cap = cv2.VideoCapture(0)
 
     # Get screen dimensions
     screen_width, screen_height = get_screen_dimensions()
+
+    # --- Mode Management ---
+    MOVEMENT_MODE = 0
+    ANGLE_MODE = 1
+    NUM_MODES = 2
+    current_mode = ANGLE_MODE
 
     # Variables for movement tracking
     prev_left_wrist = None  # This is actually the right hand due to mirroring
@@ -41,6 +62,13 @@ def main():
 
             if not ret:
                 break
+
+            # --- Key Press Handling ---
+            key = cv2.waitKey(10) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord('m'):
+                current_mode = (current_mode + 1) % NUM_MODES
 
             # Flip frame horizontally for mirror effect
             frame = cv2.flip(frame, 1)
@@ -82,110 +110,6 @@ def main():
                 mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
             )
 
-            # Calculate hand movements
-            right_movement_value = 0  # Right hand in mirror
-            left_movement_value = 0  # Left hand in mirror
-
-            if results.pose_landmarks:
-                # Get left wrist landmark (appears as right hand due to mirroring)
-                left_wrist = results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_WRIST]
-                # Get right wrist landmark (appears as left hand due to mirroring)
-                right_wrist = results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_WRIST]
-
-                # Process left wrist (right hand in mirror)
-                if left_wrist.visibility > 0.5:
-                    current_left_pos = (left_wrist.x * new_width, left_wrist.y * new_height)
-
-                    if prev_left_wrist is not None:
-                        # Calculate distance moved
-                        distance = np.sqrt((current_left_pos[0] - prev_left_wrist[0])**2 +
-                                           (current_left_pos[1] - prev_left_wrist[1])**2)
-
-                        # Filter out extreme distances (likely detection errors)
-                        max_reasonable_distance = 100
-                        if distance < max_reasonable_distance:
-                            right_movement_history.append(distance)
-                        else:
-                            current_left_pos = prev_left_wrist
-
-                        # Keep only recent movements
-                        if len(right_movement_history) > max_history:
-                            right_movement_history.pop(0)
-
-                        # Calculate movement value
-                        if right_movement_history:
-                            avg_movement = np.mean(right_movement_history)
-                            scaled_movement = avg_movement * 0.25
-                            calculated_value = min(100, int(scaled_movement ** 2))
-
-                            # Filter extreme jumps between frames
-                            jump = abs(calculated_value - prev_right_movement_value)
-                            if jump <= max_jump or prev_right_movement_value == 0:
-                                right_movement_value = calculated_value
-                            else:
-                                if calculated_value > prev_right_movement_value:
-                                    right_movement_value = prev_right_movement_value + max_jump
-                                else:
-                                    right_movement_value = max(0, prev_right_movement_value - max_jump)
-
-                    prev_left_wrist = current_left_pos
-                    prev_right_movement_value = right_movement_value
-                else:
-                    prev_left_wrist = None
-                    right_movement_history = []
-                    right_movement_value = max(0, prev_right_movement_value - 10)
-                    prev_right_movement_value = right_movement_value
-
-                # Process right wrist (left hand in mirror)
-                if right_wrist.visibility > 0.5:
-                    current_right_pos = (right_wrist.x * new_width, right_wrist.y * new_height)
-
-                    if prev_right_wrist is not None:
-                        distance = np.sqrt((current_right_pos[0] - prev_right_wrist[0])**2 +
-                                           (current_right_pos[1] - prev_right_wrist[1])**2)
-
-                        max_reasonable_distance = 100
-                        if distance < max_reasonable_distance:
-                            left_movement_history.append(distance)
-                        else:
-                            current_right_pos = prev_right_wrist
-
-                        if len(left_movement_history) > max_history:
-                            left_movement_history.pop(0)
-
-                        if left_movement_history:
-                            avg_movement = np.mean(left_movement_history)
-                            scaled_movement = avg_movement * 0.25
-                            calculated_value = min(100, int(scaled_movement ** 2))
-
-                            jump = abs(calculated_value - prev_left_movement_value)
-                            if jump <= max_jump or prev_left_movement_value == 0:
-                                left_movement_value = calculated_value
-                            else:
-                                if calculated_value > prev_left_movement_value:
-                                    left_movement_value = prev_left_movement_value + max_jump
-                                else:
-                                    left_movement_value = max(0, prev_left_movement_value - max_jump)
-
-                    prev_right_wrist = current_right_pos
-                    prev_left_movement_value = left_movement_value
-                else:
-                    prev_right_wrist = None
-                    left_movement_history = []
-                    left_movement_value = max(0, prev_left_movement_value - 10)
-                    prev_left_movement_value = left_movement_value
-            else:
-                # No pose detected, reset everything
-                prev_left_wrist = None
-                right_movement_history = []
-                right_movement_value = max(0, prev_right_movement_value - 10)
-                prev_right_movement_value = right_movement_value
-
-                prev_right_wrist = None
-                left_movement_history = []
-                left_movement_value = max(0, prev_left_movement_value - 10)
-                prev_left_movement_value = left_movement_value
-
             # Create black canvas of screen size
             canvas = np.zeros((screen_height, screen_width, 3), dtype=np.uint8)
 
@@ -196,19 +120,171 @@ def main():
             # Place the frame in the center of the canvas
             canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = image
 
-            # Display movement values
-            cv2.putText(canvas, f'Left Hand: {left_movement_value}',
-                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
-            cv2.putText(canvas, f'Right Hand: {right_movement_value}',
-                        (screen_width - 400, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+            # --- Mode-specific Logic and Display ---
+            if current_mode == MOVEMENT_MODE:
+               # Calculate hand movements
+                right_movement_value = 0  # Right hand in mirror
+                left_movement_value = 0  # Left hand in mirror
+
+                if results.pose_landmarks:
+                    # Get left wrist landmark (appears as right hand due to mirroring)
+                    left_wrist = results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_WRIST]
+                    # Get right wrist landmark (appears as left hand due to mirroring)
+                    right_wrist = results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_WRIST]
+
+                    # Process left wrist (right hand in mirror)
+                    if left_wrist.visibility > 0.5:
+                        current_left_pos = (left_wrist.x * new_width, left_wrist.y * new_height)
+
+                        if prev_left_wrist is not None:
+                            # Calculate distance moved
+                            distance = np.sqrt((current_left_pos[0] - prev_left_wrist[0])**2 +
+                                               (current_left_pos[1] - prev_left_wrist[1])**2)
+
+                            # Filter out extreme distances (likely detection errors)
+                            max_reasonable_distance = 100
+                            if distance < max_reasonable_distance:
+                                right_movement_history.append(distance)
+                            else:
+                                current_left_pos = prev_left_wrist
+
+                            # Keep only recent movements
+                            if len(right_movement_history) > max_history:
+                                right_movement_history.pop(0)
+
+                            # Calculate movement value
+                            if right_movement_history:
+                                avg_movement = np.mean(right_movement_history)
+                                scaled_movement = avg_movement * 0.25
+                                calculated_value = min(100, int(scaled_movement ** 2))
+
+                                # Filter extreme jumps between frames
+                                jump = abs(calculated_value - prev_right_movement_value)
+                                if jump <= max_jump or prev_right_movement_value == 0:
+                                    right_movement_value = calculated_value
+                                else:
+                                    if calculated_value > prev_right_movement_value:
+                                        right_movement_value = prev_right_movement_value + max_jump
+                                    else:
+                                        right_movement_value = max(0, prev_right_movement_value - max_jump)
+
+                        prev_left_wrist = current_left_pos
+                        prev_right_movement_value = right_movement_value
+                    else:
+                        prev_left_wrist = None
+                        right_movement_history = []
+                        right_movement_value = max(0, prev_right_movement_value - 10)
+                        prev_right_movement_value = right_movement_value
+
+                    # Process right wrist (left hand in mirror)
+                    if right_wrist.visibility > 0.5:
+                        current_right_pos = (right_wrist.x * new_width, right_wrist.y * new_height)
+
+                        if prev_right_wrist is not None:
+                            distance = np.sqrt((current_right_pos[0] - prev_right_wrist[0])**2 +
+                                               (current_right_pos[1] - prev_right_wrist[1])**2)
+
+                            max_reasonable_distance = 100
+                            if distance < max_reasonable_distance:
+                                left_movement_history.append(distance)
+                            else:
+                                current_right_pos = prev_right_wrist
+
+                            if len(left_movement_history) > max_history:
+                                left_movement_history.pop(0)
+
+                            if left_movement_history:
+                                avg_movement = np.mean(left_movement_history)
+                                scaled_movement = avg_movement * 0.25
+                                calculated_value = min(100, int(scaled_movement ** 2))
+
+                                jump = abs(calculated_value - prev_left_movement_value)
+                                if jump <= max_jump or prev_left_movement_value == 0:
+                                    left_movement_value = calculated_value
+                                else:
+                                    if calculated_value > prev_left_movement_value:
+                                        left_movement_value = prev_left_movement_value + max_jump
+                                    else:
+                                        left_movement_value = max(0, prev_left_movement_value - max_jump)
+
+                        prev_right_wrist = current_right_pos
+                        prev_left_movement_value = left_movement_value
+                    else:
+                        prev_right_wrist = None
+                        left_movement_history = []
+                        left_movement_value = max(0, prev_left_movement_value - 10)
+                        prev_left_movement_value = left_movement_value
+                else:
+                    # No pose detected, reset everything
+                    prev_left_wrist = None
+                    right_movement_history = []
+                    right_movement_value = max(0, prev_right_movement_value - 10)
+                    prev_right_movement_value = right_movement_value
+
+                    prev_right_wrist = None
+                    left_movement_history = []
+                    left_movement_value = max(0, prev_left_movement_value - 10)
+                    prev_left_movement_value = left_movement_value
+
+                # Display movement values
+                cv2.putText(canvas, f'Left Hand: {left_movement_value}',
+                            (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+                cv2.putText(canvas, f'Right Hand: {right_movement_value}',
+                            (screen_width - 400, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+
+                # Draw movement bars on black borders
+                if x_offset > 0:
+                    # Left bar (blue) for left hand movement
+                    bar_width = min(x_offset - 20, 60)
+                    bar_height = int((left_movement_value / 100) * (screen_height - 100))
+                    bar_x = 10
+                    bar_y = screen_height - 50 - bar_height
+                    cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_width, screen_height - 50), (255, 0, 0), -1)
+
+                    # Right bar (red) for right hand movement
+                    bar_height_right = int((right_movement_value / 100) * (screen_height - 100))
+                    bar_x_right = screen_width - bar_width - 10
+                    bar_y_right = screen_height - 50 - bar_height_right
+                    cv2.rectangle(canvas, (bar_x_right, bar_y_right), (bar_x_right + bar_width, screen_height - 50), (0, 0, 255), -1)
+
+            elif current_mode == ANGLE_MODE:
+                right_arm_angle = 0
+                left_arm_angle = 0
+                if results.pose_landmarks:
+                    landmarks = results.pose_landmarks.landmark
+
+                    # Left Arm Angle (appears as right arm in mirror)
+                    try:
+                        shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                        elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+                        wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+                        right_arm_angle = calculate_angle(shoulder, elbow, wrist)
+                    except:
+                        pass
+
+                    # Right Arm Angle (appears as left arm in mirror)
+                    try:
+                        shoulder = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
+                        elbow = [landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
+                        wrist = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
+                        left_arm_angle = calculate_angle(shoulder, elbow, wrist)
+                    except:
+                        pass
+
+                # Display angle values
+                cv2.putText(canvas, f'Left Arm Angle: {int(left_arm_angle)}',
+                            (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+                cv2.putText(canvas, f'Right Arm Angle: {int(right_arm_angle)}',
+                            (screen_width - 550, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+
+            # Display current mode
+            mode_text = "Mode: Movement" if current_mode == MOVEMENT_MODE else "Mode: Angles"
+            cv2.putText(canvas, f"{mode_text} (Press 'm' to switch)", (20, screen_height - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
             # Display fullscreen
             cv2.namedWindow('MediaPipe Pose Detection', cv2.WND_PROP_FULLSCREEN)
             cv2.setWindowProperty('MediaPipe Pose Detection', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             cv2.imshow('MediaPipe Pose Detection', canvas)
-
-            if cv2.waitKey(10) & 0xFF == ord('q'):
-                break
 
     cap.release()
     cv2.destroyAllWindows()
