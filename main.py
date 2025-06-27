@@ -43,7 +43,7 @@ def main():
         while not stop_event.is_set():
             sender_instance.send()
             # Wait for 500ms before the next send
-            stop_event.wait(0.5)
+            stop_event.wait(0.1)
 
     sender_thread = threading.Thread(target=send_data_periodically, args=(sender, stop_sending))
     sender_thread.start()
@@ -289,6 +289,21 @@ def main():
                             (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
                 cv2.putText(canvas, f'Right Arm Angle: {int(right_arm_angle)}',
                             (screen_width - 550, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+
+                # Draw movement bars on black borders
+                if x_offset > 0:
+                    # Left bar (blue) for left hand movement
+                    bar_width = min(x_offset - 20, 60)
+                    bar_height = int((left_arm_angle / 180) * (screen_height - 100))
+                    bar_x = 10
+                    bar_y = screen_height - 50 - bar_height
+                    cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_width, screen_height - 50), (255, 0, 0), -1)
+
+                    # Right bar (red) for right hand movement
+                    bar_height_right = int((right_arm_angle / 180) * (screen_height - 100))
+                    bar_x_right = screen_width - bar_width - 10
+                    bar_y_right = screen_height - 50 - bar_height_right
+                    cv2.rectangle(canvas, (bar_x_right, bar_y_right), (bar_x_right + bar_width, screen_height - 50), (0, 0, 255), -1)
 
                 # send data
                 sender.add_data("left_arm_angle", left_arm_angle)

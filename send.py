@@ -16,7 +16,7 @@ class DataSender:
     sender.send()
     """
 
-    def __init__(self, esp_ip='http://192.168.178.58:8080'):
+    def __init__(self, esp_ip='http://192.168.178.123:8080'):
         self.esp_ip = esp_ip
         self.headers = {'Content-Type': 'application/json'}
         self._data = {}
