@@ -1,64 +1,51 @@
-import requests
+import socket
 import json
 from typing import Any
 import threading
-import time
 
 
 class DataSender:
     """
-    Sammelt Daten und sendet sie als JSON-Objekt an einen ESP.
+    Sammelt Daten und sendet sie als JSON-Objekt per UDP-Broadcast an alle ESPs im Netzwerk.
 
-    Beispiel fuer die Verwendung:
-    sender = DataSender()
-    sender.add_data("armsMovement", "up")
-    sender.add_data("armsAngle", 90)
-    sender.send()
+    Beispiel:
+        sender = DataSender("192.168.161.255", 8080)
+        sender.add_data("left_arm_angle", 90)
+        sender.add_data("right_arm_angle", 150)
+        sender.send()
     """
 
-    def __init__(self, esp_ip='http://192.168.178.123:8080'):
-        self.esp_ip = esp_ip
-        self.headers = {'Content-Type': 'application/json'}
+    def __init__(self, broadcast_ip: str, port: int):
+        self.broadcast_address = (broadcast_ip, port)
         self._data = {}
         self._lock = threading.Lock()
-        self._connection_lost = False
-        self._last_error_print_time = 0
-        self._error_print_interval = 10  # In Sekunden
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
     def add_data(self, key: str, value: Any):
-        """Fuegt dem Datenobjekt ein Schluessel-Wert-Paar hinzu."""
+        """Fügt dem Datenobjekt ein Schlüssel-Wert-Paar hinzu."""
         with self._lock:
             self._data[key] = value
 
     def send(self):
-        """
-        Sendet das gesammelte Datenobjekt thread-sicher.
-        Die Daten werden nach dem Kopieren zum Senden zurueckgesetzt.
-        """
-        data_to_send = None
+        """Sendet das gesammelte Datenobjekt per UDP-Broadcast."""
         with self._lock:
-            if self._data:
-                data_to_send = self._data.copy()
-                self._data.clear()
+            if not self._data:
+                return
 
-        if not data_to_send:
-            return
+            # Wenn mode_switch vorhanden ist, nur diesen Key senden
+            if "mode_switch" in self._data:
+                data_to_send = {"mode_switch": self._data["mode_switch"]}
+            else:
+                data_to_send = self._data.copy()
+
+            self._data.clear()
 
         try:
-            response = requests.post(self.esp_ip, data=json.dumps(data_to_send), headers=self.headers, timeout=2)
-
-            if self._connection_lost:
-                print("Verbindung zum ESP wiederhergestellt.")
-                self._connection_lost = False
-
-            print(f"Daten gesendet: {json.dumps(data_to_send)}")
-            print(f"Antwort: {response.text}")
-            print("-" * 50)
-        except requests.exceptions.RequestException:
-            current_time = time.time()
-            if not self._connection_lost or (current_time - self._last_error_print_time) > self._error_print_interval:
-                print("Verbindung zum ESP fehlgeschlagen. ueberpruefen Sie, ob das Geraet aktiv ist.")
-                self._last_error_print_time = current_time
-            self._connection_lost = True
+            message = json.dumps(data_to_send).encode('utf-8')
+            self.socket.sendto(message, self.broadcast_address)
+            print(f"Gesendet an {self.broadcast_address[0]}:{self.broadcast_address[1]} -> {json.dumps(data_to_send)}")
         except Exception as e:
-            print(f"Unerwarteter Fehler: {e}")
+            print(f"Fehler beim Senden: {e}")
+
+        print("-" * 50)
