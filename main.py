@@ -11,26 +11,16 @@ mp_pose = mp.solutions.pose
 
 
 def main():
-    # Initialize video capture
     cap = cv2.VideoCapture(0)
-
-    # Get screen dimensions
     screen_width, screen_height = get_screen_dimensions()
-
-    # --- Mode Management ---
-    manual_mode = False  # False = automatic angle mode, True = manual mode
-
-    # Initialize DataSender with multiple ESP IPs
-
+    manual_mode = False
     sender = DataSender("192.168.161.255", 8080)
-
-    # --- Threading for sending data ---
     stop_sending = threading.Event()
 
     def send_data_periodically(sender_instance, stop_event):
         while not stop_event.is_set():
             sender_instance.send()
-            # Wait for 500ms before the next send
+            # Wait for 100ms before the next send
             stop_event.wait(0.1)
 
     sender_thread = threading.Thread(target=send_data_periodically, args=(sender, stop_sending))
